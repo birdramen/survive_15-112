@@ -14,6 +14,7 @@ Grading shortcuts: beats me dawg !! to be determined
 '''
 
 from cmu_graphics import *
+import math
 
 
 # super awesome GLOBAL variables
@@ -92,6 +93,11 @@ def isHovered(app, cx, cy, width, height, mouseX = None, mouseY = None):
     y = app.mouseY if mouseY is None else mouseY
     return (cx - width//2 <= x <= cx + width//2 and cy - height//2 <= y <= cy + height//2)
 
+def floatOffset(app, speed = 0.05, magnitude = 6):
+    # smooth up-down offset using sine wave
+    # ai consultation
+    return int(magnitude * math.sin(app.stepCount * speed))
+
 def drawButton(app, cx, cy, width, height, label):
     # button that glows red on hover
     hovered = isHovered(app, cx, cy, width, height)
@@ -138,7 +144,7 @@ def dormDraw(app):
     drawLabel('You should probably get up, huh?', width//2, 108, size = 13, fill = app.boneColor, font = 'Georgia')
 
     # student in bed
-    drawStudent(app, width//2, 270)
+    drawStudent(app, width//2, 270 + floatOffset(app))
 
     # choice prompt
     drawUnpleasantTitle(app, 'WHAT DO YOU DO?', width//2, 450, size = 22)
@@ -204,9 +210,6 @@ def resetQuiz(app):
     app.quizFeedback = ''
     app.quizFeedbackTimer = 0
 
-def resetLecture(app):
-    app.currentBackground = app.lectureScene
-
 def quizOnStep(app):
     if app.quizFeedbackTimer > 0:
         app.quizFeedbackTimer -= 1
@@ -221,7 +224,7 @@ def quizDraw(app):
     for i in range(app.quizWrong):
         cx = 60 if i % 2 == 0 else width - 60
         cy = 80 if i < 2 else height - 80
-        drawVoidCreature(app, cx, cy)
+        drawVoidCreature(app, cx, cy + floatOffset(app, speed = 0.04 + i * 0.01))
     
     drawUnpleasantTitle(app, 'PRE-LECTURE QUIZ', width //2, 35, size = 26)
     drawLabel('With every wrong answer, they draw nearer.', width //2, 68, size = 12, fill = rgb(180, 100, 100), font = 'Georgia')
@@ -231,7 +234,7 @@ def quizDraw(app):
         drawRect(100, height//2-50, 600, 120, fill = rgb(10, 5, 20), border = app.bloodColor, borderWidth = 2, opacity = 90)
         message = ("You answered everything correctly! The beast retreats for the time being."
         if app.quizWrong == 0 else f'You got {app.quizWrong} wrong. It is watching.')
-        drawLabel(message, width//2, height//2 - 45, size = 30, fill = app.bloodColor, font = 'Georgia')
+        drawLabel(message, width//2, height//2, size = 30, fill = app.bloodColor, font = 'Georgia')
         drawButton(app, width//2, height//2+60, 280, 48, 'Time to go to lecture!')
         return
     
@@ -280,6 +283,99 @@ def quizOnMousePress(app, mouseX, mouseY):
             app.quizIndex += 1
             break
 
+# scene 3: lecture !!!!!!! (stay awake!!)
+lectureDuration = 20 * 60
+sleepMax = 100
+
+def resetLecture(app):
+    app.sleepMeter = 0
+    app.lectureTimer = lectureDuration
+    app.clickSparks = []
+    app.lectureDone = False
+
+def resetGradescope(app):
+    pass
+
+def lectureOnStep(app):
+    if app.lectureDone:
+        return
+    
+    # sleep meter rises passively each step
+    app.sleepMeter = min(sleepMax, app.sleepMeter + 0.15)
+    app.lectureTimer -= 1
+
+    # age and clean up sparks
+    app.clickSparks = [(x, y, age+1) for (x, y, age) in app.clickSparks if age < 25]
+
+    # fell asleep
+    if app.sleepMeter >= sleepMax:
+        app.deathMessage = [
+            'YOU FELL ASLEEP IN LECTURE.',
+            '',
+            'You wake up briefly — just long enough',
+            'to see your Gradescope notification.',
+            '',
+            '"MISSING: 47 assignments"',
+            '"GRADE: Infintesimally small"',
+            '',
+            'GAME OVER.',
+        ]
+        app.scene = deadScene
+        return
+    
+    # survived whole lecture
+    if app.lectureTimer <= 0:
+        app.lectureDone = True
+    
+def lectureDraw(app):
+    drawBackground(app, app.lectureScene)
+
+    # Kosbie at front; gets angry as you get sleepier
+    drawKosbie(app, width//2, 180 + floatOffset(app, speed = 0.03, magnitude = 4), angry = (app.sleepMeter > 70))
+
+    # vignette darkens as sleep meter fills
+    drawVignette(app, int(app.sleepMeter * 0.7))
+
+    # sleep meter HUD
+    drawLabel('CONSCIOUSNESS', 140, 555, size = 13, fill = app.boneColor, font = 'Georgia')
+    drawHealthBar(app, 420, 555, 340, 22, int(sleepMax - app.sleepMeter), sleepMax, app.sicklyColor, 'Awake')
+
+    # countdown timer !
+    secsLeft = app.lectureTimer // 60
+    drawLabel(f'Time remaining: {secsLeft}s', width - 80, 25, size = 12, fill = rgb(120, 100, 100), font = 'Georgia')
+
+    # click sparks
+    for (x, y, age) in app.clickSparks:
+        opacity = max(0, 100 - age * 4)
+        drawJolt(app, x, y - age * 2)
+    if app.lectureDone:
+        drawRect(150, 220, 500, 160, fill=rgb(10, 5, 20),
+                 border=app.bloodColor, borderWidth=3)
+        drawLabel('You survived the lecture.', width//2, 270,
+                  size=18, fill=app.boneColor, bold=True, font='Georgia')
+        drawLabel('Your phone buzzes.', width//2, 305,
+                  size=14, fill=rgb(180, 150, 150), font='Georgia')
+        drawLabel("It's a Gradescope notification.", width//2, 330,
+                  size=14, fill=app.bloodColor, font='Georgia')
+        drawButton(app, width//2, 375, 260, 44, 'Check Gradescope (sorry)')   
+    else:
+        # prompt pulses red when danger is high
+        promptColor = app.bloodColor if app.sleepMeter > 60 else rgb(120, 80, 80)
+        drawLabel('CLICK ANYWHERE TO STAY AWAKE', width//2, height - 20,
+                  size=14, fill=promptColor, bold=(app.sleepMeter > 60),
+                  font='Georgia')
+        
+def lectureOnMousePress(app, mouseX, mouseY):
+    if app.lectureDone:
+        if isHovered(app, width//2, 375, 260, 44, mouseX, mouseY):
+            resetGradescope(app)
+            app.scene = gradescopeScene
+        return
+ 
+    # clicking reduces sleep meter & spawns a jolt spark
+    app.sleepMeter  = max(0, app.sleepMeter - 20)
+    app.clickSparks.append((mouseX, mouseY, 0))         
+
 # mvc
 # oh brother
 
@@ -287,6 +383,7 @@ def onAppStart(app):
     app.width = width
     app.height = height
     app.stepsPerSecond = 60
+    app.stepCount = 0
     app.backgroundColor = rgb(10, 5, 15)
     app.bloodColor = rgb(180, 10, 20)
     app.voidColor = rgb(20, 0, 40)
@@ -306,11 +403,14 @@ def resetApp(app):
     resetQuiz(app)
 
 def onStep(app):
+    app.stepCount += 1
     if app.scene == quizScene: quizOnStep(app)
+    elif app.scene == lectureScene: lectureOnStep(app)
 
 def redrawAll(app):
     if app.scene == dormScene: dormDraw(app)
     elif app.scene == quizScene: quizDraw(app)
+    elif app.scene == lectureScene: lectureDraw(app)
     elif app.scene == deadScene: deadDraw(app)
     else:
         # I have not made these scenes whoops
@@ -326,6 +426,7 @@ def onMousePress(app, mouseX, mouseY):
     app.mouseY = mouseY
     if app.scene ==  dormScene: dormOnMousePress(app, mouseX, mouseY)
     elif app.scene == quizScene: quizOnMousePress(app, mouseX, mouseY)
+    elif app.scene == lectureScene: lectureOnMousePress(app, mouseX, mouseY)
     elif app.scene == deadScene: deadOnMousePress(app, mouseX, mouseY)
 
 def onKeyPress(app, key):
@@ -333,5 +434,4 @@ def onKeyPress(app, key):
     pass
 
 # RUN !!!!!!!!!!!!
-print("I am actually doing something this time...")
 runApp(width = width, height = height)
