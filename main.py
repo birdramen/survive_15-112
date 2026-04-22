@@ -53,7 +53,7 @@ def loadAssets(app):
     app.kosbieSize = (300, 300)
     app.studentSize = (300, 300)
     app.voidSize = (300, 300)
-    app.projectileSize = (24, 24)
+    app.projectileSize = (40, 40)
     app.joltSize = (40, 40)
 
 # ai consulted to figure out how to do this one
@@ -72,6 +72,7 @@ def loadSounds(app):
         app.wrongSound = Sound('assets/sounds/wrong.wav')
         app.whisperSound = Sound('assets/sounds/whisper.wav')
         app.ambience = Sound('assets/sounds/ambience.wav')
+        app.quizMusic = Sound('assets/sounds/quiz_music.wav')
         app.soundsLoaded = True
 
 def stopAllSounds(app):
@@ -82,7 +83,7 @@ def stopAllSounds(app):
                   app.correctSound, app.deadSound, app.heartbeatSound,
                   app.hitSound, app.jumpscareSound, app.ominousSound,
                   app.victorySound, app.winSound, app.wrongSound, app.whisperSound,
-                  app.ambience]:
+                  app.ambience, app.quizMusic]:
         try:
             sound.pause()
         except:
@@ -158,8 +159,6 @@ def resetIntro(app):
     app.introScroll = height + 100 # start text below screen !! evil bug
     app.introDone = False
     app.introFade = 0
-    if hasattr(app, 'soundsLoaded') and app.soundsLoaded:
-        playSound(app, app.ambience)
 
 def introOnStep(app):
     if not app.introDone:
@@ -202,9 +201,9 @@ def introOnMousePress(app, mouseX, mouseY):
         app.dormAmbiencePlaying = True
         playSound(app, app.ambience)
     if isHovered(app, width - 80, height - 30, 130, 36, mouseX, mouseY):
-        stopAllSounds(app)
-        playSound(app, app.ambience)
+        app.dormAmbiencePlaying = True
         switchScene(app, dormScene)
+        playSound(app, app.ambience)
 
 def drawBackground(app, img):
     # stretches all my poorly sized background images to fit window
@@ -306,7 +305,6 @@ def dormOnMousePress(app, mouseX, mouseY):
     # sleep is the cousin of death
     # do you like all my magic numbers
     if isHovered(app, width//2 - 160, 520, 220, 48, mouseX, mouseY):
-        playSound(app, app.jumpscareSound)
         app.deathMessage = [
             'YOU CHOSE SLEEP.',
             '',
@@ -320,8 +318,11 @@ def dormOnMousePress(app, mouseX, mouseY):
             'GAME OVER.'
         ]
         switchScene(app, deadScene)
+        playSound(app, app.jumpscareSound)
+        playSound(app, app.deadSound)
     elif isHovered(app, width//2 + 160, 520, 240, 48, mouseX, mouseY):
         switchScene(app, quizScene)
+        playSound(app, app.quizMusic)
 
 # DEAD SCENE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 def deadDraw(app):
@@ -344,7 +345,7 @@ def deadOnMousePress(app, mouseX, mouseY):
 # questions: (question, [choices], correct index)
 quizQuestions = [ 
     ("What does MVC stand for?",
-    ["Model View Controller", "My Very (Bad Grade in this) Class", "My Variable Crashed", "Mysterious Void Calls"], 0),
+    ["Model View Controller", "My Very (Bad Grade in this) Class", "My Variable Crashed", "MI Vdon't Cknow"], 0),
     ("Time complexity of linear search?",
      ["O(1)", "O(log n)", "O(n)", "O(n^2)"], 2),
     ("What is the radius of the sun?", ["432,288 miles", "432,289 miles", "432,290 miles", "432,291 miles"], 0),
@@ -384,8 +385,8 @@ def quizDraw(app):
     # once done
     if app.quizIndex >= len(quizQuestions):
         drawRect(100, height//2-50, 600, 120, fill = rgb(10, 5, 20), border = app.bloodColor, borderWidth = 2, opacity = 90)
-        message = ("You answered everything correctly! The beast retreats for the time being."
-        if app.quizWrong == 0 else f'You got {app.quizWrong} wrong. It is watching.')
+        message = ("You answered everything correctly!"
+        if app.quizWrong == 0 else f'You got {app.quizWrong} wrong. Kosbie is watching.')
         drawLabel(message, width//2, height//2, size = 30, fill = app.bloodColor, font = 'Georgia')
         drawButton(app, width//2, height//2+60, 280, 48, 'Time to go to lecture!')
         return
@@ -415,13 +416,12 @@ def quizOnMousePress(app, mouseX, mouseY):
     if app.quizFeedbackTimer > 0:
         return
  
-    # continue to lecture button 
+    # continue to lecture button
     if app.quizIndex >= len(quizQuestions):
-        stopAllSounds(app)
-        playSound(app, app.chordSound)
         if isHovered(app, width//2, height//2 + 60, 280, 48, mouseX, mouseY):
-            resetLecture(app)
             switchScene(app, lectureScene)
+            resetLecture(app)
+            playSound(app, app.ambience)
         return
  
     # check which answer was clicked
@@ -439,8 +439,143 @@ def quizOnMousePress(app, mouseX, mouseY):
             app.quizIndex += 1
             break
 
+# LECTURE GAME
+
+# prompts the player has to type during lecture
+typingPrompts = [
+    ('What does len([1,2,3]) return?',          '3'),
+    ('What does 2 ** 3 return?',                '8'),
+    ('What does 10 % 3 return?',                '1'),
+    ('What does range(3) start at?',            '0'),
+    ('What keyword starts a function?',         'def'),
+    ('What does bool("") return?',              'False'),
+    ('What does type(3.0) return?',             'float'),
+    ('What does "ab" * 2 return?',              'abab'),
+    ('What does [1,2,3][-1] return?',           '3'),
+    ('What does 15 // 4 return?',               '3'),
+    ('What does str(True) return?',             'True'),
+    ('What does not True return?',              'False'),
+    ('What does round(3.7) return?',            '4'),
+    ('What does abs(-5) return?',               '5'),
+    ('What does "hello"[1] return?',            'e'),
+    ('What does [] == [] return?',              'True'),
+    ('What does 5 == 5.0 return?',              'True'),
+    ('What does type(True) return?',            'bool'),
+    ('What does "hi".upper() return?',          'HI'),
+    ('What does max(1,2,3) return?',            '3'),
+    ('What does min(1,2,3) return?',            '1'),
+    ('What does [1]+[2] return?',               '[1, 2]'),
+    ('What does 3 in [1,2,3] return?',          'True'),
+    ('What does "".join(["a","b"]) return?',    'ab'),
+    ('What does range(2,5).__len__() return?',  '3'),
+]
+
+def resetTyping(app):
+    app.typingActive    = False   
+    app.typingPrompt    = ''     
+    app.typingInput     = ''   
+    app.typingQuestion = ''   
+    app.typingTimer     = 0       
+    app.typingCooldown  = 0       
+    app.typingSuccess   = False   
+    app.typingFail          = False
+    app.typingFeedbackTimer = 0    # how long to show feedback
+
+def spawnTypingPrompt(app):
+    app.typingQuestion, app.typingPrompt   = random.choice(typingPrompts)
+    app.typingInput    = ''
+    app.typingActive   = True
+    app.typingTimer    = len(app.typingPrompt) * 120  # time scales with length
+    app.typingSuccess  = False
+    app.typingFail     = False
+
+def updateTyping(app):
+    if app.typingFeedbackTimer > 0:
+        app.typingFeedbackTimer -= 1
+        if app.typingFeedbackTimer == 0:
+            app.typingActive = False
+            app.typingCooldown = 230  # 5 second cooldown before next prompt
+        return
+
+    if app.typingActive:
+        app.typingTimer -= 1
+        if app.typingTimer <= 0:
+            # ran out of time
+            app.typingFail = True
+            app.typingFeedbackTimer = 60
+            app.sleepMeter = min(sleepMax, app.sleepMeter + 50)
+            playSound(app, app.wrongSound)
+    else:
+        if app.typingCooldown > 0:
+            app.typingCooldown -= 1
+        elif not app.lectureDone:
+            spawnTypingPrompt(app)
+
+def handleTypingKey(app, key):
+    if not app.typingActive or app.typingFeedbackTimer > 0:
+        return
+
+    if key == 'backspace':
+        app.typingInput = app.typingInput[:-1]
+    elif key == 'space':
+        app.typingInput += ' '
+    elif len(key) == 1:
+        app.typingInput += key
+
+    # check if input matches prompt
+    if app.typingInput == app.typingPrompt:
+        app.typingSuccess  = True
+        app.typingFeedbackTimer = 60
+        app.sleepMeter = max(0, app.sleepMeter - 30)
+        playSound(app, app.correctSound)
+    # check if input is wrong beyond repair
+    elif not app.typingPrompt.startswith(app.typingInput):
+        app.typingFail = True
+        app.typingFeedbackTimer = 60
+        app.sleepMeter  = min(sleepMax, app.sleepMeter + 30)
+        playSound(app, app.wrongSound)
+
+def drawTypingPrompt(app):
+    if not app.typingActive:
+        return
+
+    drawRect(100, 130, 600, 160, fill=rgb(10, 5, 20),
+             border=app.bloodColor, borderWidth=2)
+
+    drawLabel('YOU HAVE BEEN COLD-CALLED:', width//2, 155,
+              size=13, fill=rgb(180, 100, 100), font='Georgia')
+
+    # the question
+    drawLabel(app.typingQuestion, width//2, 185,
+              size=16, fill=app.boneColor, bold=True, font='Georgia')
+
+    # input box
+    drawRect(200, 200, 400, 36, fill=rgb(5, 2, 10),
+             border=app.bloodColor, borderWidth=1)
+
+    if app.typingSuccess:
+        inputColor = app.sicklyColor
+    elif app.typingFail:
+        inputColor = app.bloodColor
+    elif app.typingPrompt.startswith(app.typingInput):
+        inputColor = app.sicklyColor
+    else:
+        inputColor = app.bloodColor
+
+    cursor = '|' if app.stepCount % 30 < 15 else ''
+    drawLabel(app.typingInput + cursor, width//2, 218, size=16, fill=inputColor, bold=True, font='monospace')
+
+    # timer bar
+    maxTime = len(app.typingPrompt) * 120
+    drawHealthBar(app, width//2, 268, 300, 14, app.typingTimer, maxTime, app.bloodColor)
+
+    if app.typingSuccess:
+        drawLabel('correct !! insert congratulatory message', width//2, 250, size=14, fill=app.sicklyColor, bold=True, font='Georgia')
+    elif app.typingFail:
+        drawLabel('wrong dumbass', width//2, 250, size=14, fill=app.bloodColor, bold=True, font='Georgia')
+
 # scene 3: lecture !!!!!!! (stay awake!!)
-lectureDuration = 20 * 60
+lectureDuration = 40 * 60
 sleepMax = 100
 
 def resetLecture(app):
@@ -450,19 +585,19 @@ def resetLecture(app):
     app.lectureDone = False
     app.heartbeatTimer = 0
     app.kosbieWasAngry = False
-    if hasattr(app, 'soundsLoaded') and app.soundsLoaded:
-        playSound(app, app.ambience)
+    resetTyping(app)
 
 def lectureOnStep(app):
     if app.lectureDone:
         return
     
     # sleep meter rises passively each step
-    app.sleepMeter = min(sleepMax, app.sleepMeter + 0.15)
+    app.sleepMeter = min(sleepMax, app.sleepMeter + 0.25)
     app.lectureTimer -= 1
 
     # age and clean up sparks
     app.clickSparks = [(x, y, age+1) for (x, y, age) in app.clickSparks if age < 25]
+    updateTyping(app)
 
     # heartbeat meter speeds up as sleep meter fills
     if app.sleepMeter > 60:
@@ -479,7 +614,6 @@ def lectureOnStep(app):
     
     # fell asleep
     if app.sleepMeter >= sleepMax:
-        playSound(app, app.victorySound)
         app.deathMessage = [
             'YOU FELL ASLEEP IN LECTURE.',
             '',
@@ -492,6 +626,7 @@ def lectureOnStep(app):
             'GAME OVER.',
         ]
         switchScene(app, deadScene)
+        playSound(app, app.deadSound)
         return
     
     # survived whole lecture
@@ -519,6 +654,7 @@ def lectureDraw(app):
     for (x, y, age) in app.clickSparks:
         opacity = max(0, 100 - age * 4)
         drawJolt(app, x, y - age * 2)
+    drawTypingPrompt(app)
     if app.lectureDone:
         drawRect(150, 220, 500, 160, fill=rgb(10, 5, 20),
                  border=app.bloodColor, borderWidth=3)
@@ -539,8 +675,9 @@ def lectureDraw(app):
 def lectureOnMousePress(app, mouseX, mouseY):
     if app.lectureDone:
         if isHovered(app, width//2, 375, 260, 44, mouseX, mouseY):
-            resetGradescope(app)
             switchScene(app, gradescopeScene)
+            resetGradescope(app)
+            playSound(app, app.chordSound)
         return
  
     # clicking reduces sleep meter & spawns a jolt spark
@@ -554,10 +691,10 @@ def resetGradescope(app):
 
 def gradescopeOnStep(app):
     app.gsTimer += 1
-    # reveal a new phrase every 90 steps (1.5 sceonds)
+    # reveal a new phrase every 90 steps (1.5 seconds) with a chord sting
     if app.gsTimer % 90 == 0 and app.gsPhase < 2:
         app.gsPhase += 1
-        playSound(app, app.chordSound)
+        playSound(app, app.jumpscareSound)
 
 def gradescopeDraw(app):
     drawBackground(app, app.gradescopeScene)
@@ -592,12 +729,13 @@ def gradescopeDraw(app):
 def gradescopeOnMousePress(app, mouseX, mouseY):
     if app.gsPhase >= 2:
         if isHovered(app, width//2, 490, 260, 44, mouseX, mouseY):
-            resetBoss(app)
             switchScene(app, bossScene)
+            resetBoss(app)
+            playSound(app, app.bossMusic)
 
 # scene 5: boss battle !!!!!!!!!!!!!!
-playerMax = 100
-bossMax = 200
+playerMax = 150
+bossMax = 500
 
 def resetBoss(app):
     app.particles = []
@@ -645,8 +783,15 @@ def bossOnStep(app):
         dx = app.playerX - app.bossX
         dy = app.playerY - app.bossY
         dist = math.sqrt(dx**2 + dy**2) or 1
-        speed = 4
+        speed = 6
         app.projectiles.append([app.bossX, app.bossY, dx/dist * speed, dy/dist * speed])
+        if app.bossHp < bossMax//2:
+            spread = 0.4
+            app.projectiles.append([app.bossX, app.bossY, (dx/dist * math.cos(spread) - dy/dist * math.sin(spread)) * speed,
+                                 (dx/dist * math.sin(spread) + dy/dist * math.cos(spread)) * speed])
+            app.projectiles.append([app.bossX, app.bossY,
+                                 (dx/dist * math.cos(-spread) - dy/dist * math.sin(-spread)) * speed,
+                                 (dx/dist * math.sin(-spread) + dy/dist * math.cos(-spread)) * speed])
 
     # move projectiles and check for collision
     surviving = []
@@ -670,7 +815,6 @@ def bossOnStep(app):
 
     # check win/lose
     if app.playerHp <= 0:
-        playSound(app, app.victorySound)
         app.deathMessage = [
             'YOU HAVE BEEN ABSORBED',
             '',
@@ -682,13 +826,13 @@ def bossOnStep(app):
         ]
         app.bossOver = True
         switchScene(app, deadScene)
+        playSound(app, app.deadSound)
     elif app.bossHp <= 0:
-        app.winMusicPlaying = True
-        playSound(app, app.victorySound)
-        playSound(app, app.winSound)
         app.bossOver = True
+        app.winMusicPlaying = True
         switchScene(app, winScene)
-
+        playSound(app, app.winSound)
+        
 def bossDraw(app):
     drawBackground(app, app.bossScene)
 
@@ -734,7 +878,7 @@ def bossOnMousePress(app, mouseX, mouseY):
     # attack if click is close enough to boss
     dist = math.sqrt((mouseX - app.bossX)**2 + (mouseY - app.bossY)**2)
     if dist < 140:
-        damage = 15 if app.bossHp > bossMax//2 else 10
+        damage = 10 if app.bossHp > bossMax//2 else 17
         app.bossHp = max(0, app.bossHp - damage)
         app.bossHitTimer = 8
         spawnParticles(app, int(app.bossX), int(app.bossY), count = 15, color = app.eyeColor)
@@ -790,11 +934,16 @@ def resetApp(app):
     app.mouseY = 0
     app.deathMessage = []
     app.particles = []
+    app.deadMusicPlaying = False
     resetQuiz(app)
     resetLecture(app)
     resetGradescope(app)
     resetBoss(app)
     resetIntro(app)
+    resetTyping(app)
+    if hasattr(app, 'soundsLoaded') and app.soundsLoaded:
+        stopAllSounds(app)
+        playSound(app, app.ambience)
 
 def onStep(app):
     app.stepCount += 1
@@ -845,22 +994,32 @@ def onMousePress(app, mouseX, mouseY):
     elif app.scene == winScene: winOnMousePress(app, mouseX, mouseY)
 
 def onKeyPress(app, key):
-    if   key == '1': app.scene = dormScene
-    elif key == '2': 
+    if app.scene == lectureScene:
+        handleTypingKey(app, key)
+        return  # don't fall through to scene shortcuts while typing
+    if key == '1':
+        switchScene(app, dormScene)
+        playSound(app, app.ambience)
+    elif key == '2':
         resetQuiz(app)
-        app.scene = quizScene
+        switchScene(app, quizScene)
+        playSound(app, app.quizMusic)
     elif key == '3':
         resetLecture(app)
-        app.scene = lectureScene
+        switchScene(app, lectureScene)
+        playSound(app, app.ambience)
     elif key == '4':
         resetGradescope(app)
-        app.scene = gradescopeScene
+        switchScene(app, gradescopeScene)
+        playSound(app, app.chordSound)
     elif key == '5':
         resetBoss(app)
-        app.scene = bossScene
+        switchScene(app, bossScene)
+        playSound(app, app.bossMusic)
     elif key == 'i':
         resetIntro(app)
-        app.scene = introScene
+        switchScene(app, introScene)
+        playSound(app, app.ambience)
     elif key == 'r': resetApp(app)
 
 # RUN !!!!!!!!!!!!
